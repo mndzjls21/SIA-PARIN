@@ -12,7 +12,11 @@ import {
   Database,
   ArrowRight,
   CheckCircle2,
-  Loader2
+  Loader2,
+  Activity,
+  Terminal,
+  ShieldAlert,
+  Search
 } from 'lucide-react';
 import { useClients } from '../ClientContext';
 import { ChartContainer, CustomTooltip } from '../components/Charts';
@@ -24,17 +28,25 @@ import {
   CartesianGrid, 
   Tooltip, 
   ResponsiveContainer,
-  Cell
+  Cell,
+  ScatterChart,
+  Scatter,
+  ZAxis,
+  ComposedChart,
+  Area,
+  Line,
+  Legend
 } from 'recharts';
 
 const GroupA = () => {
-  const { clients, selectedClientId, updateClientA } = useClients();
+  const { clients, selectedClientId, setSelectedClientId, updateClientA } = useClients();
   const selectedClient = clients.find(c => c.id === selectedClientId) || clients[0];
   
   const [formData, setFormData] = useState({
     cpu: selectedClient?.groupA.cpu_usage_percent || 0,
     latency: selectedClient?.groupA.api_latency_ms || 0,
-    errors: selectedClient?.groupA.error_500_count || 0
+    errors: selectedClient?.groupA.error_500_count || 0,
+    attacks: selectedClient?.groupA.blocked_ddos_attacks || 0
   });
 
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
@@ -48,7 +60,8 @@ const GroupA = () => {
       await updateClientA(selectedClient.id, {
         cpu_usage_percent: Number(formData.cpu),
         api_latency_ms: Number(formData.latency),
-        error_500_count: Number(formData.errors)
+        error_500_count: Number(formData.errors),
+        blocked_ddos_attacks: Number(formData.attacks)
       });
       setStatus('success');
       setTimeout(() => setStatus('idle'), 2000);
@@ -66,233 +79,295 @@ const GroupA = () => {
     );
   }
 
-  const stats = [
-    { label: 'CPU Usage', value: `${selectedClient.groupA.cpu_usage_percent}%`, icon: Cpu, color: 'text-rose-400', bg: 'bg-rose-500/10' },
-    { label: 'API Latency', value: `${selectedClient.groupA.api_latency_ms}ms`, icon: Zap, color: 'text-amber-400', bg: 'bg-amber-500/10' },
-    { label: 'Downtime', value: `${selectedClient.groupA.downtime_minutes}m`, icon: Clock, color: 'text-rose-500', bg: 'bg-rose-500/20' },
-    { label: 'DDoS Blocks', value: selectedClient.groupA.blocked_ddos_attacks, icon: ShieldCheck, color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
-    { label: 'Storage Used', value: `${selectedClient.groupA.storage_used_gb}GB`, icon: HardDrive, color: 'text-indigo-400', bg: 'bg-indigo-500/10' },
-    { label: 'Bandwidth', value: `${selectedClient.groupA.bandwidth_consumed_tb}TB`, icon: Globe, color: 'text-indigo-500', bg: 'bg-indigo-500/10' },
-    { label: 'Conc. Users', value: selectedClient.groupA.active_concurrent_users, icon: Users, color: 'text-slate-300', bg: 'bg-slate-800/50' },
-    { label: '500 Errors', value: selectedClient.groupA.error_500_count, icon: AlertCircle, color: 'text-rose-600', bg: 'bg-rose-900/20' },
+  // 1. Churn Risk Matrix Data (Latency vs Tickets vs 500s)
+  const churnData = clients.map(c => ({
+    name: c.name,
+    latency: c.groupA.api_latency_ms,
+    tickets: c.groupB.support_tickets_open,
+    errors: c.groupA.error_500_count,
+    risk: c.kpis.churn_risk_level,
+    isSelected: c.id === selectedClient.id
+  }));
+
+  // 2. Attack Impact Data (Attacks vs CSAT)
+  // Generating some "historical" noise for the selected client to show the time-series effect as requested
+  const attackHistoryData = Array.from({ length: 12 }).map((_, i) => {
+    const isBaseline = i < 8;
+    const attacks = isBaseline ? Math.random() * 200 : 1000 + Math.random() * 500;
+    const csat = isBaseline ? 4.5 + Math.random() * 0.5 : 4.4 + Math.random() * 0.4;
+    return {
+      period: `T-${12-i}h`,
+      attacks,
+      csat
+    };
+  });
+
+  const topKPIs = [
+    { label: 'Avg Latency', value: `${selectedClient.groupA.api_latency_ms}ms`, icon: Zap, status: selectedClient.groupA.api_latency_ms > 500 ? 'critical' : 'safe' },
+    { label: 'Total 500s', value: selectedClient.groupA.error_500_count, icon: AlertCircle, status: selectedClient.groupA.error_500_count > 10 ? 'critical' : 'safe' },
+    { label: 'DDoS Blocked', value: selectedClient.groupA.blocked_ddos_attacks.toLocaleString(), icon: ShieldAlert, status: 'info' },
+    { label: 'Downtime', value: `${selectedClient.groupA.downtime_minutes}m`, icon: Clock, status: selectedClient.groupA.downtime_minutes > 0 ? 'warning' : 'safe' },
   ];
 
-  const barData = clients.map(c => ({
-    name: c.name,
-    cpu: c.groupA.cpu_usage_percent,
-    latency: c.groupA.api_latency_ms,
-    errors: c.groupA.error_500_count
-  }));
+  const getStatusColors = (status: string) => {
+    switch(status) {
+      case 'critical': return 'border-l-rose-500 text-rose-500';
+      case 'warning': return 'border-l-amber-500 text-amber-500';
+      case 'safe': return 'border-l-emerald-500 text-emerald-500';
+      default: return 'border-l-blue-500 text-blue-400';
+    }
+  };
 
   return (
     <motion.div 
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="p-8 space-y-8"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      className="p-8 space-y-8 pb-20"
     >
+      {/* Header Section */}
       <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight text-slate-100 uppercase">Infrastructure Health</h2>
-          <p className="text-xs font-mono text-slate-500">Site Reliability Command Center (Group A)</p>
-        </div>
-        <div className="flex gap-4">
-          <div className="technical-card px-4 py-2 flex items-center gap-2 border-emerald-500/30 bg-emerald-500/5">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_#10b981]" />
-            <span className="text-[10px] font-mono font-bold text-emerald-400">TELEMETRY_LINK: STABLE</span>
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 text-blue-400">
+            <Terminal size={14} />
+            <span className="text-[10px] font-mono font-black uppercase tracking-[0.3em]">Infrastructure Node: {selectedClient.id}</span>
           </div>
+          <h2 className="text-3xl font-black tracking-tighter text-slate-100 uppercase">DevOps Command Center</h2>
+          <p className="text-xs font-mono text-slate-500 italic">Site Reliability Engineering Matrix (Group A — DB_A Write Access)</p>
+        </div>
+        <div className="flex items-center gap-4">
+           <div className="technical-card px-4 py-2 bg-slate-900 border-slate-800 flex items-center gap-3">
+             <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+             <span className="text-[10px] font-mono text-emerald-500/80 uppercase tracking-widest">Syslink_v4.2://Connected</span>
+           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-12 gap-6">
-        {/* LEFT COLUMN: SOURCE DATA PREVIEWS */}
-        <div className="col-span-3 space-y-4">
-          <div className="technical-card p-4 border-slate-800 bg-slate-900/20">
-            <h3 className="text-[9px] font-mono text-slate-500 uppercase tracking-widest mb-3 flex items-center justify-between">
-              LOCAL_CACHE (DB_A)
-              <span className="w-1 h-1 rounded-full bg-indigo-500 shadow-[0_0_5px_theme(colors.indigo.500)]" />
-            </h3>
-            <div className="space-y-2 text-[10px] font-mono">
-              <div className="flex justify-between border-b border-slate-800/50 pb-1">
-                <span className="text-slate-600">active_users</span>
-                <span className="text-slate-300">{selectedClient.groupA.active_concurrent_users}</span>
+      {/* Top Row: Scorecards */}
+      <div className="grid grid-cols-4 gap-6">
+        {topKPIs.map((kpi) => (
+          <div key={kpi.label} className={`technical-card p-6 border-slate-800 border-l-4 transition-all hover:scale-[1.02] ${getStatusColors(kpi.status)}`}>
+            <div className="flex justify-between items-start mb-4">
+              <div className="p-2 bg-slate-900 rounded-lg">
+                <kpi.icon size={18} />
               </div>
-              <div className="flex justify-between border-b border-slate-800/50 pb-1">
-                <span className="text-slate-600">storage_gb</span>
-                <span className="text-slate-300">{selectedClient.groupA.storage_used_gb}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-600">bandwidth_tb</span>
-                <span className="text-slate-300">{selectedClient.groupA.bandwidth_consumed_tb}</span>
-              </div>
+              <span className="text-[8px] font-mono uppercase tracking-widest opacity-40">REAL_TIME</span>
             </div>
+            <div className={`text-3xl font-black tracking-tighter mb-1`}>{kpi.value}</div>
+            <div className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">{kpi.label}</div>
           </div>
+        ))}
+      </div>
 
-          <div className="technical-card p-4 border-slate-800 bg-slate-950/50 opacity-60">
-            <h3 className="text-[9px] font-mono text-slate-500 uppercase tracking-widest mb-3 flex items-center justify-between">
-              REMOTE_SHADOW (DB_B)
-              <span className="text-[7px] bg-slate-800 px-1 rounded text-slate-500">READ_ONLY</span>
-            </h3>
-            <div className="space-y-2 text-[10px] font-mono">
-              <div className="flex justify-between border-b border-slate-800/50 pb-1">
-                <span className="text-slate-600">monthly_rev</span>
-                <span className="text-slate-400">${selectedClient.groupB.monthly_subscription_fee_usd.toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-600">open_tickets</span>
-                <span className="text-slate-400">{selectedClient.groupB.support_tickets_open}</span>
-              </div>
+      {/* Middle Row: Primary KPI Visualizations */}
+      <div className="grid grid-cols-12 gap-8">
+        <div className="col-span-12 lg:col-span-7">
+           <ChartContainer title="KPI 1: Churn Risk Predictor Matrix (Latency Correlation)">
+            <div className="relative w-full h-[400px] bg-slate-950 rounded border border-slate-800 overflow-hidden shadow-2xl transition-all hover:shadow-blue-500/5">
+               {/* Danger Zone Shading and Safe Zone Shading */}
+               <div className="absolute top-0 right-0 w-[55%] h-[55%] bg-rose-500/10 border-l border-b border-rose-500/20 flex flex-col items-center justify-center pointer-events-none z-0 backdrop-blur-[1px]">
+                 <span className="text-[10px] font-black text-rose-500/40 uppercase tracking-[0.5em] mb-1">⚠ Critical Zone</span>
+                 <span className="text-[8px] font-mono text-rose-500/30 uppercase tracking-widest">High Latency + High Support</span>
+               </div>
+               <div className="absolute bottom-[30px] left-[30px] w-[45%] h-[45%] bg-emerald-500/5 border-r border-t border-emerald-500/20 flex flex-col items-center justify-center pointer-events-none z-0">
+                 <span className="text-[10px] font-black text-emerald-500/30 uppercase tracking-[0.5em] mb-1">Safe Zone</span>
+                 <span className="text-[8px] font-mono text-emerald-500/30 uppercase tracking-widest">Nominal Thresholds</span>
+               </div>
+
+               <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-[9px] font-mono font-bold text-blue-500 uppercase tracking-widest z-10 drop-shadow-md">Telemetry Latency (DB_A)</div>
+               <div className="absolute top-1/2 -left-14 -rotate-90 text-[9px] font-mono font-bold text-teal-500 uppercase tracking-widest z-10 drop-shadow-md">Support Tickets (DB_B)</div>
+
+               <ResponsiveContainer width="100%" height="100%" className="z-10 relative">
+                <ScatterChart margin={{ top: 30, right: 30, bottom: 30, left: 30 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1E293B" vertical={false} />
+                  <XAxis type="number" dataKey="latency" domain={[0, 1000]} hide />
+                  <YAxis type="number" dataKey="tickets" domain={[0, 15]} hide />
+                  <ZAxis type="number" dataKey="errors" range={[100, 1000]} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Scatter name="Managed Fleet" data={churnData}>
+                    {churnData.map((entry, index) => (
+                      <Cell 
+                        key={`cell-${index}`} 
+                        fill={entry.risk === 'High Risk' ? '#F43F5E' : entry.risk === 'Medium Risk' ? '#F59E0B' : '#3B82F6'}
+                        stroke={entry.isSelected ? '#FFF' : 'none'}
+                        strokeWidth={entry.isSelected ? 2 : 0}
+                        className={entry.risk === 'High Risk' ? 'animate-pulse' : ''}
+                      />
+                    ))}
+                  </Scatter>
+                </ScatterChart>
+              </ResponsiveContainer>
             </div>
-          </div>
+            <div className="mt-3 flex justify-between items-center text-[10px] font-mono">
+              <div className="flex gap-4">
+                <span className="text-rose-500 flex items-center gap-1"><div className="w-1.5 h-1.5 bg-rose-500 rounded-full" /> CRITICAL</span>
+                <span className="text-emerald-500 flex items-center gap-1"><div className="w-1.5 h-1.5 bg-emerald-500 rounded-full" /> NOMINAL</span>
+              </div>
+              <span className="text-slate-600 italic">Source: CROSS_DEPT_TRIGGERS (DB_C)</span>
+            </div>
+          </ChartContainer>
         </div>
 
-        {/* MIDDLE COLUMN: TABLE DB_C SYNTHESIS */}
-        <div className="col-span-5">
-          <div className="technical-card h-full border-slate-700 bg-slate-900 shadow-[inset_0_0_20px_rgba(0,0,0,0.4)]">
-            <div className="p-4 border-b border-slate-800 bg-slate-950/50 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Zap size={14} className="text-indigo-400" />
-                <h3 className="text-[10px] font-mono font-black text-slate-300 uppercase tracking-widest">Synthesis Output (Table C)</h3>
-              </div>
-              <span className="text-[8px] font-mono text-indigo-500/50 animate-pulse">LIVE_AGGREGATION_ACTIVE</span>
-            </div>
-            <div className="p-6 space-y-6">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 bg-slate-950 rounded border border-slate-800">
-                  <p className="text-[8px] font-mono text-slate-500 uppercase mb-1">CHURN_PROBABILITY</p>
-                  <p className={`text-xl font-black ${selectedClient.kpis.churn_risk_level === 'High Risk' ? 'text-rose-500' : 'text-emerald-500'}`}>
-                    {selectedClient.kpis.churn_risk_level}
-                  </p>
-                </div>
-                <div className="p-4 bg-slate-950 rounded border border-slate-800">
-                  <p className="text-[8px] font-mono text-slate-500 uppercase mb-1">SLA_PENALTY_DEBT</p>
-                  <p className="text-xl font-black text-rose-500">
-                   -${selectedClient.kpis.sla_penalty_owed_usd.toLocaleString()}
-                  </p>
-                </div>
-              </div>
+        <div className="col-span-12 lg:col-span-5">
+          <ChartContainer title="KPI 2: Stealth Security Effectiveness (Attack Impact)">
+            <div className="relative w-full h-[400px] bg-slate-950 rounded border border-slate-800 p-4 shadow-2xl transition-all hover:shadow-blue-500/5">
+               {selectedClient.kpis.attack_impact_score === 'Invisible Defense' && (
+                 <div className="absolute top-4 right-4 z-20 bg-teal-500/10 border border-teal-500/30 px-3 py-1 rounded-full flex items-center gap-2">
+                   <div className="w-1.5 h-1.5 bg-teal-500 rounded-full animate-pulse" />
+                   <span className="text-[9px] font-bold text-teal-400 uppercase tracking-widest">Invisible Defense Active</span>
+                 </div>
+               )}
 
-              <div className="space-y-3">
-                <div className="flex items-center justify-between text-[10px] font-mono">
-                  <span className="text-slate-500">Resource Profitability</span>
-                  <span className={`px-2 py-0.5 rounded ${selectedClient.kpis.resource_profitability_status === 'Profitable' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'}`}>
-                    {selectedClient.kpis.resource_profitability_status.toUpperCase()}
-                  </span>
-                </div>
-                <div className="h-1 bg-slate-800 rounded-full overflow-hidden">
-                  <motion.div 
-                    initial={{ width: 0 }}
-                    animate={{ width: `${selectedClient.kpis.resource_profitability_status === 'Profitable' ? 85 : 30}%` }}
-                    className={`h-full ${selectedClient.kpis.resource_profitability_status === 'Profitable' ? 'bg-emerald-500' : 'bg-rose-500'}`}
+               <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={attackHistoryData} margin={{ top: 20, right: 10, bottom: 0, left: 10 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1E293B" />
+                  <XAxis dataKey="period" hide />
+                  <YAxis yAxisId="left" tick={{ fill: '#3B82F6', fontSize: 9 }} tickFormatter={(v) => `${v} Atk`} axisLine={false} tickLine={false} />
+                  <YAxis yAxisId="right" orientation="right" domain={[0, 5]} tick={{ fill: '#14B8A6', fontSize: 9 }} tickFormatter={(v) => `${v} CSAT`} axisLine={false} tickLine={false} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Area 
+                    yAxisId="left"
+                    type="monotone" 
+                    dataKey="attacks" 
+                    fill="rgba(59, 130, 246, 0.15)" 
+                    stroke="#3B82F6" 
+                    name="DDoS Volume (DB_A)"
                   />
-                </div>
-              </div>
-
-              <div className="p-4 bg-indigo-500/5 rounded border border-indigo-500/20">
-                <p className="text-[10px] font-mono text-indigo-300 italic mb-2">Automated Trigger Evaluation:</p>
-                <ul className="text-[9px] font-mono text-slate-500 space-y-1">
-                  <li>• if (latency &gt; 500ms && tickets &gt;= 3) =&gt; CHURN_EVENT</li>
-                  <li>• if (cpu &gt; 90%) =&gt; SCALE_REVENUE_TRIGGER</li>
-                </ul>
-              </div>
+                  <Line 
+                    yAxisId="right"
+                    type="monotone" 
+                    dataKey="csat" 
+                    stroke="#14B8A6" 
+                    strokeWidth={3}
+                    dot={false}
+                    name="Client Sat (DB_B)"
+                  />
+                  <Legend verticalAlign="bottom" height={36} iconType="circle" />
+                </ComposedChart>
+              </ResponsiveContainer>
             </div>
-          </div>
+            <p className="text-[10px] text-slate-500 font-mono mt-4 leading-relaxed">
+              Ideal stealth state: High DDoS area spikes (<span className="text-blue-500 font-bold">Group A / Blue</span>) must correlate with flat user satisfaction lines (<span className="text-teal-500 font-bold">Group B / Teal</span>), proving perimeter invisibility.
+            </p>
+          </ChartContainer>
         </div>
+      </div>
 
-        {/* RIGHT COLUMN: MODULATION FIELDS */}
-        <div className="col-span-4">
-          <div className="technical-card p-6 bg-slate-900 border-indigo-500/20 h-full">
-            <h3 className="data-label mb-6 text-indigo-400">Modulation (DB_A Writes)</h3>
+      <div className="grid grid-cols-12 gap-8">
+        {/* Command Center (Modulation) */}
+        <div className="col-span-12 lg:col-span-4">
+          <div className="technical-card p-6 bg-slate-900 border-blue-500/20 h-full">
+            <div className="flex items-center gap-3 mb-6">
+              <Activity className="text-blue-400" size={18} />
+              <h3 className="text-xs font-black text-slate-100 uppercase tracking-widest">Modulation: DB_A Write Terminal</h3>
+            </div>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="text-[10px] font-mono text-slate-500 uppercase block mb-1">CPU Load (%)</label>
-                <input 
-                  type="number" 
-                  value={formData.cpu} 
-                  onChange={e => setFormData({...formData, cpu: Number(e.target.value)})}
-                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 outline-none transition-all"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-mono text-slate-500 uppercase block mb-1">API Latency (ms)</label>
-                <input 
-                  type="number" 
-                  value={formData.latency} 
-                  onChange={e => setFormData({...formData, latency: Number(e.target.value)})}
-                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 outline-none transition-all"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-mono text-slate-500 uppercase block mb-1">Fatal Errors (count)</label>
-                <input 
-                  type="number" 
-                  value={formData.errors} 
-                  onChange={e => setFormData({...formData, errors: Number(e.target.value)})}
-                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 outline-none transition-all"
-                />
-              </div>
-              <button 
-                type="submit"
-                disabled={status === 'loading'}
-                className="w-full bg-indigo-600 text-white font-black uppercase tracking-[0.2em] text-[10px] py-4 rounded shadow-lg shadow-indigo-900/40 hover:bg-indigo-500 transition-all flex items-center justify-center gap-2 mt-4"
-              >
+                <label className="text-[10px] font-mono text-slate-500 uppercase block mb-1">CPU Power Utilization (%)</label>
+                  <input 
+                    type="number" 
+                    value={formData.cpu} 
+                    onChange={e => setFormData({...formData, cpu: Number(e.target.value)})}
+                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2.5 text-sm text-slate-100 font-mono focus:border-blue-500 outline-none transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-mono text-slate-500 uppercase block mb-1">Telemetry Latency (ms)</label>
+                  <input 
+                    type="number" 
+                    value={formData.latency} 
+                    onChange={e => setFormData({...formData, latency: Number(e.target.value)})}
+                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2.5 text-sm text-slate-100 font-mono focus:border-blue-500 outline-none transition-all"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-[10px] font-mono text-slate-500 uppercase block mb-1">500_CRASH_COUNT</label>
+                    <input 
+                      type="number" 
+                      value={formData.errors} 
+                      onChange={e => setFormData({...formData, errors: Number(e.target.value)})}
+                      className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2.5 text-sm text-slate-100 font-mono focus:border-blue-500 outline-none transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-mono text-slate-500 uppercase block mb-1">BLOCKED_ATTACKS</label>
+                    <input 
+                      type="number" 
+                      value={formData.attacks} 
+                      onChange={e => setFormData({...formData, attacks: Number(e.target.value)})}
+                      className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2.5 text-sm text-slate-100 font-mono focus:border-blue-500 outline-none transition-all"
+                    />
+                  </div>
+                </div>
+
+                {status === 'error' && (
+                  <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded flex items-center gap-2 text-rose-500 text-[10px] font-mono">
+                    <AlertCircle size={14} />
+                    PROTOCOL_ERROR: DATA_TYPES_MISMATCH
+                  </div>
+                )}
+
+                <button 
+                  type="submit"
+                  disabled={status === 'loading'}
+                  className="w-full bg-blue-600 text-white font-black uppercase tracking-[0.2em] text-[10px] py-4 rounded shadow-lg shadow-blue-900/40 hover:bg-blue-500 transition-all flex items-center justify-center gap-2 mt-4"
+                >
                 {status === 'loading' ? <Loader2 size={16} className="animate-spin" /> : status === 'success' ? <CheckCircle2 size={16} /> : <ArrowRight size={16} />}
-                {status === 'loading' ? 'COMMITTING TO DB_A...' : status === 'success' ? 'TX_SUCCESSFUL' : 'COMMIT WRITES'}
+                {status === 'loading' ? 'COMMITTING_WRITES...' : status === 'success' ? 'LEDGER_TX_DONE' : 'COMMIT_TELEMETRY'}
               </button>
             </form>
           </div>
         </div>
-      </div>
 
-      <div className="grid grid-cols-2 gap-8">
-        <ChartContainer title="Fleet CPU Utilization (%)">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={barData}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1E293B" />
-              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#64748B' }} />
-              <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#64748B' }} />
-              <Tooltip content={<CustomTooltip />} />
-              <Bar dataKey="cpu">
-                {barData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.cpu > 80 ? '#F43F5E' : '#6366F1'} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </ChartContainer>
-
-        <ChartContainer title="Network Latency Matrix (ms)">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={barData}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1E293B" />
-              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#64748B' }} />
-              <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#64748B' }} />
-              <Tooltip content={<CustomTooltip />} />
-              <Bar dataKey="latency">
-                {barData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.latency > 500 ? '#F59E0B' : '#0EA5E9'} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </ChartContainer>
-      </div>
-
-      <div className="technical-card border-slate-800">
-        <div className="px-6 py-3 border-b border-slate-800 bg-slate-900/80 flex items-center justify-between">
-          <h3 className="data-label text-slate-400">Kernel Log Stream</h3>
-          <span className="text-[9px] font-mono text-slate-600">SYSLOG v4.2</span>
-        </div>
-        <div className="p-6 font-mono text-[10px] space-y-2 max-h-60 overflow-y-auto custom-scrollbar bg-slate-950">
-          {selectedClient.groupA.error_500_count > 0 && (
-            <div className="text-rose-500 bg-rose-500/5 p-1 border-l-2 border-rose-500">
-              [CRITICAL] Error 500: Internal Server Failure on thread {Math.random().toString(16).slice(2, 8).toUpperCase()}
+        {/* Recent Activity Log */}
+        <div className="col-span-12 lg:col-span-8">
+          <div className="technical-card h-full border-slate-800 flex flex-col">
+            <div className="px-6 py-4 border-b border-slate-800 bg-slate-950/50 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Activity size={14} className="text-slate-400" />
+                <h3 className="text-[10px] font-mono font-black text-slate-400 uppercase tracking-widest">Real-Time Event Stream</h3>
+              </div>
+              <span className="text-[8px] font-mono text-slate-600 tracking-tighter">SYSLOG_DAEMON_v4.2.0</span>
             </div>
-          )}
-          <div className="text-emerald-500/80">[INFO] Handshake successful: Port 443 active</div>
-          <div className="text-indigo-400/80">[NET] ICMP Echo Server Response: 12ms</div>
-          <div className="text-slate-500">[LOG] Bandwidth verified: {selectedClient.groupA.bandwidth_consumed_tb}TB transferred</div>
-          <div className="text-amber-500/80">[SEC] Firewall: Dropped packet from unstable origin (Block count: {selectedClient.groupA.blocked_ddos_attacks})</div>
-          <div className="text-slate-600">[DEBUG] GC Cycle completed in 4.2ms</div>
+            <div className="p-0 font-mono text-[10px] flex-grow bg-slate-950 overflow-hidden">
+              <div className="h-full overflow-y-auto custom-scrollbar p-6 space-y-3">
+                <div className="flex gap-4 p-3 bg-rose-500/5 border-l-2 border-rose-500">
+                  <span className="text-rose-500 shrink-0">[15:42:10]</span>
+                  <p className="text-slate-300 tracking-tight">
+                    <span className="text-rose-400 font-bold">ALARM:</span> Cluster_ID_{selectedClient.id} reporting api_latency &gt; {selectedClient.groupA.api_latency_ms}ms. Immediate impact on Nexus_DB_C risk scores detected.
+                  </p>
+                </div>
+                <div className="flex gap-4 p-3 bg-emerald-500/5 border-l-2 border-emerald-500">
+                  <span className="text-emerald-500 shrink-0">[15:40:02]</span>
+                  <p className="text-slate-400">
+                    <span className="text-emerald-400 font-bold">INFO:</span> Handshake successful on node: {selectedClient.name}. Encrypted tunnel established via AES-256.
+                  </p>
+                </div>
+                <div className="flex gap-4 p-3 border-l-2 border-slate-700">
+                  <span className="text-slate-600 shrink-0">[15:38:55]</span>
+                  <p className="text-slate-500 underline decoration-slate-800">
+                    [WS] Real-time sync event caught from Database B: Client financial records patched by Group B.
+                  </p>
+                </div>
+                <div className="flex gap-4 p-3 border-l-2 border-indigo-500/30">
+                  <span className="text-indigo-500 shrink-0">[15:35:12]</span>
+                  <p className="text-slate-400">
+                    <span className="text-indigo-400 font-bold">NET:</span> ICMP Echo respond from Cluster_Origin_{selectedClient.id} in 12ms. Network stability within nominal range.
+                  </p>
+                </div>
+                <div className="flex gap-4 p-3 bg-amber-500/5 border-l-2 border-amber-500">
+                  <span className="text-amber-500 shrink-0">[15:32:44]</span>
+                  <p className="text-slate-400">
+                    <span className="text-amber-400 font-bold">SEC:</span> Firewall dropped 12 suspicious packets. Total blocked attacks for this session: {selectedClient.groupA.blocked_ddos_attacks}.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="p-3 border-t border-slate-800 bg-slate-900/40 text-[9px] font-mono text-slate-600 flex justify-between uppercase">
+               <span>Worker_Process: active (PID: 8421)</span>
+               <span className="animate-pulse">Monitoring telemetry strings...</span>
+            </div>
+          </div>
         </div>
       </div>
     </motion.div>
