@@ -1,0 +1,6 @@
+{
+  "name": "Nexus SaaS Command Center",
+  "description": "Enterprise operations dashboard integrating infrastructure health (Group A), financial metrics (Group B), and automated executive KPIs (Database C).",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}

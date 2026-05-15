@@ -1,0 +1,40 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+@layer base {
+  body {
+    @apply bg-slate-950 text-slate-200 font-sans antialiased;
+  }
+}
+
+@layer components {
+  .technical-card {
+    @apply bg-slate-900 border border-slate-800 rounded-lg overflow-hidden shadow-2xl;
+  }
+  
+  .data-label {
+    @apply text-[10px] uppercase tracking-widest text-slate-500 font-bold;
+  }
+  
+  .data-value {
+    @apply font-mono text-lg font-bold text-slate-100;
+  }
+
+  .status-badge {
+    @apply px-2 py-0.5 text-[10px] font-bold rounded border uppercase tracking-tighter;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    @apply bg-slate-950;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-slate-800 rounded-full;
+  }
+}
