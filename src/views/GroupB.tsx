@@ -32,7 +32,8 @@ import {
   LineChart,
   Line,
   ComposedChart,
-  Area
+  Area,
+  ReferenceLine
 } from 'recharts';
 
 const GroupB = () => {
@@ -278,8 +279,18 @@ const GroupB = () => {
                 <Bar yAxisId="left" dataKey="revenue" fill="#14B8A6" name="Monthly Rev ($)" radius={[2, 2, 0, 0]} />
                 <Bar yAxisId="right" dataKey="downtime" fill="#3B82F6" name="Downtime (min)" radius={[2, 2, 0, 0]} />
                 <Bar yAxisId="left" dataKey="penalty" fill="#F43F5E" name="SLA Penalty Owed ($)" radius={[2, 2, 0, 0]} />
+                <ReferenceLine y={15} yAxisId="right" stroke="#F43F5E" strokeDasharray="3 3" label={{ position: 'top', value: 'SLA Threshold (15m)', fill: '#F43F5E', fontSize: 10 }} />
               </BarChart>
             </ResponsiveContainer>
+          </div>
+          <div className="mt-4 p-4 bg-slate-900 border border-slate-800 rounded flex items-center justify-between">
+            <div>
+              <p className="text-[10px] font-mono text-slate-500 uppercase">Total SLA Penalties Today</p>
+              <p className="text-xs text-slate-400">Lost Money due to Server Outages</p>
+            </div>
+            <div className={`text-2xl font-black ${clients.reduce((acc, c) => acc + c.kpis.sla_penalty_owed_usd, 0) > 0 ? 'text-rose-500' : 'text-slate-500'}`}>
+              ${clients.reduce((acc, c) => acc + c.kpis.sla_penalty_owed_usd, 0).toLocaleString()}
+            </div>
           </div>
           <p className="text-[10px] font-mono text-slate-500 mt-4 leading-relaxed">
             Correlating <span className="text-blue-500 font-bold">Group A Downtime (Blue)</span> with <span className="text-teal-500 font-bold">Group B Revenue (Teal)</span>. High-tier clients incur exponential penalties. Check definition with Data Team.

@@ -35,7 +35,9 @@ import {
   ComposedChart,
   Area,
   Line,
-  Legend
+  Legend,
+  PieChart,
+  Pie
 } from 'recharts';
 
 const GroupA = () => {
@@ -142,20 +144,67 @@ const GroupA = () => {
         </div>
       </div>
 
-      {/* Top Row: Scorecards */}
-      <div className="grid grid-cols-4 gap-6">
-        {topKPIs.map((kpi) => (
-          <div key={kpi.label} className={`technical-card p-6 border-slate-800 border-l-4 transition-all hover:scale-[1.02] ${getStatusColors(kpi.status)}`}>
-            <div className="flex justify-between items-start mb-4">
-              <div className="p-2 bg-slate-900 rounded-lg">
-                <kpi.icon size={18} />
+      {/* Top Row: Client Overview */}
+      <div className="grid grid-cols-12 gap-6">
+        <div className="col-span-12 lg:col-span-8 grid grid-cols-2 md:grid-cols-4 gap-6">
+          {topKPIs.map((kpi) => (
+            <div key={kpi.label} className={`technical-card p-6 bg-slate-900 border-slate-800 border-l-4 transition-all hover:scale-[1.02] ${getStatusColors(kpi.status)}`}>
+              <div className="flex justify-between items-start mb-4">
+                <div className="p-2 bg-slate-950 rounded-lg">
+                  <kpi.icon size={18} />
+                </div>
+                <span className="text-[8px] font-mono uppercase tracking-widest opacity-40">REAL_TIME</span>
               </div>
-              <span className="text-[8px] font-mono uppercase tracking-widest opacity-40">REAL_TIME</span>
+              <div className={`text-3xl font-black tracking-tighter mb-1`}>{kpi.value}</div>
+              <div className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">{kpi.label}</div>
             </div>
-            <div className={`text-3xl font-black tracking-tighter mb-1`}>{kpi.value}</div>
-            <div className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">{kpi.label}</div>
+          ))}
+        </div>
+        
+        {/* Single Client Churn Risk Gauge */}
+        <div className="col-span-12 lg:col-span-4 technical-card p-4 bg-slate-900 border-slate-800 flex flex-col items-center justify-center relative overflow-hidden">
+          <h3 className="absolute top-4 left-4 text-[10px] font-mono font-black text-slate-400 uppercase tracking-widest z-10">Client Churn Risk Level</h3>
+          <div className="relative w-[200px] h-[100px] mt-6">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={[
+                    { name: 'Safe', value: 1, color: '#10B981' },
+                    { name: 'Medium', value: 1, color: '#F59E0B' },
+                    { name: 'High', value: 1, color: '#F43F5E' },
+                  ]}
+                  cx="50%"
+                  cy="100%"
+                  startAngle={180}
+                  endAngle={0}
+                  innerRadius={60}
+                  outerRadius={80}
+                  paddingAngle={2}
+                  dataKey="value"
+                  stroke="none"
+                >
+                  {
+                    [0, 1, 2].map((index) => (
+                      <Cell key={`cell-${index}`} fill={['#10B981', '#F59E0B', '#F43F5E'][index]} />
+                    ))
+                  }
+                </Pie>
+              </PieChart>
+            </ResponsiveContainer>
+            
+            {/* Gauge Needle/Label Overlay */}
+            <div className="absolute inset-0 flex flex-col items-center justify-end pb-2">
+              <span className={`text-xl font-black uppercase tracking-widest ${selectedClient.kpis.churn_risk_level === 'High Risk' ? 'text-rose-500 animate-pulse' : selectedClient.kpis.churn_risk_level === 'Medium Risk' ? 'text-amber-500' : 'text-emerald-500'}`}>
+                {selectedClient.kpis.churn_risk_level.split(' ')[0]}
+              </span>
+              <span className="text-[10px] font-mono text-slate-500 uppercase">Risk Index</span>
+            </div>
           </div>
-        ))}
+          <div className="mt-2 flex items-center justify-between w-full px-8 text-[9px] font-mono text-slate-600 uppercase tracking-widest">
+            <span>Safe</span>
+            <span>Critical</span>
+          </div>
+        </div>
       </div>
 
       {/* Middle Row: Primary KPI Visualizations */}
